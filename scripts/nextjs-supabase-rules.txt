@@ -1,0 +1,319 @@
+---
+# Specify the following for Cursor rules
+description: Development rules for Next.js (SSR) with Supabase Auth
+globs: "**/*.{js,jsx,ts,tsx}"
+---
+
+# Next.js (SSR) with Supabase Auth Development Guidelines
+
+You're an expert in building server-rendered Next.js applications with Supabase as the backend. Generate **high-quality code** that adheres to the following best practices:
+
+## 🚨 CRITICAL AUTHENTICATION REQUIREMENTS 🚨
+
+1. MUST use `@supabase/ssr` for authentication - NEVER use deprecated `@supabase/auth-helpers-nextjs`
+2. MUST ONLY use `getAll()` and `setAll()` for cookie management
+3. MUST NEVER use individual `get()`, `set()`, or `remove()` methods for cookies
+4. MUST implement middleware with the correct cookie handling pattern
+
+## Project Structure Guidelines
+
+1. Place Supabase client initialization in separate utility files:
+   - Browser client: `lib/supabase/client.ts`
+   - Server client: `lib/supabase/server.ts`
+2. Organize your API calls into service modules under `lib/services` or similar structure to keep database interactions isolated and reusable.
+3. Use environment variables for Supabase credentials:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (server-side only)
+4. Keep sensitive environment variables (service role key) in `.env.local` and never expose them to the client.
+5. Use TypeScript interfaces or types for all database entities to ensure type safety throughout your application.
+6. CRITICAL: Install and use only `@supabase/ssr` for authentication (NOT the deprecated `@supabase/auth-helpers-nextjs`).
+
+## Server-Side Rendering (SSR) Best Practices
+
+1. Use Next.js's data fetching methods appropriately:
+   - `getServerSideProps` for fully dynamic, authenticated data
+   - `getStaticProps` with `revalidate` for data that changes infrequently
+   - `getStaticPaths` with `fallback: true` or `'blocking'` for dynamic routes with stable params
+2. Pass cookie headers from incoming requests to Supabase when making server-side requests to maintain authentication context.
+3. Avoid redundant Supabase queries by utilizing Next.js caching strategies.
+4. For authenticated routes, check session status server-side in `getServerSideProps` and redirect when needed.
+5. Use React Query or SWR for client-side data fetching to optimize refetching and caching.
+
+## Authentication Implementation
+
+1. Use Supabase SSR package (`@supabase/ssr`) for authentication workflows - NEVER use the deprecated `@supabase/auth-helpers-nextjs`.
+2. Create API route handlers for critical auth operations (password reset, email verification, etc.).
+3. Implement middleware for protected routes using the Next.js middleware API with the correct cookie handling pattern.
+4. Store session in cookies rather than localStorage to support SSR authentication.
+5. Use proper error handling for authentication operations with informative user feedback.
+6. ALWAYS use only `getAll()` and `setAll()` for cookie management - NEVER use individual `get`, `set`, or `remove` methods.
+
+## Database Access Patterns
+
+1. Use Row Level Security (RLS) in Supabase to enforce access control at the database level.
+2. For server-side operations that require elevated privileges, use the service role key but with caution.
+3. Create database helper functions for complex queries to ensure consistency and reuse.
+4. Use database transactions for operations that require multiple related changes.
+5. Implement proper error handling for database operations, especially for uniqueness constraints.
+
+## Real-time Subscriptions
+
+1. Initialize Supabase real-time subscriptions client-side after hydration.
+2. Unsubscribe from channels when components unmount to prevent memory leaks.
+3. Use React context to share subscription state across components when needed.
+4. Consider implementing reconnection logic for long-lived pages.
+5. Use optimistic UI updates alongside real-time subscriptions for better UX.
+
+## Performance Optimization
+
+1. Use edge functions for API routes that require low latency and don't need the full Node.js runtime.
+2. Implement proper database indexes for frequently queried columns.
+3. Optimize large result sets with pagination using Supabase's range queries.
+4. Use Storage CDN URLs rather than direct download for better performance.
+5. Implement proper caching strategies for static assets and API responses.
+
+## Example Templates
+
+### Initializing Supabase Client
+
+```tsx
+// lib/supabase/client.ts
+import { createBrowserClient } from '@supabase/ssr';
+import { Database } from '@/types/supabase';
+
+// Create a single supabase client for browser-side usage
+export function createClient() {
+  return createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+```
+
+```tsx
+// lib/supabase/server.ts
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { Database } from '@/types/supabase';
+
+// Server-side client for authenticated requests
+export async function createClient() {
+  const cookieStore = cookies();
+
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // The `setAll` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
+          }
+        },
+      },
+    }
+  );
+}
+
+// Server-side client with service role (use with caution)
+export async function createServiceClient() {
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      cookies: {},
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+}
+```
+
+### Server Component Authentication with Data Fetching
+
+```tsx
+// app/profile/page.tsx
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { Database } from '@/types/supabase';
+
+export default async function ProfilePage() {
+  const supabase = await createClient();
+  
+  // Check if we have a session
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    redirect('/login');
+  }
+
+  // Fetch data from Supabase
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', session.user.id)
+    .single();
+
+  if (error) {
+    console.error(error);
+    return <div>Failed to load profile</div>;
+  }
+
+  return (
+    <div>
+      <h1>Profile</h1>
+      <pre>{JSON.stringify(profile, null, 2)}</pre>
+    </div>
+  );
+}
+```
+
+### Using Real-time Subscriptions
+
+```tsx
+// components/ChatRoom.tsx
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { useRouter } from 'next/navigation';
+import { Database } from '@/types/supabase';
+
+type Message = Database['public']['Tables']['messages']['Row'];
+
+export default function ChatRoom({ roomId, userId }: { roomId: string, userId: string }) {
+  const supabase = createClient<Database>();
+  const router = useRouter();
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  useEffect(() => {
+    // Fetch initial messages
+    const fetchMessages = async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true });
+      
+      if (data && !error) {
+        setMessages(data);
+      }
+    };
+
+    fetchMessages();
+
+    // Set up real-time subscription
+    const channel = supabase
+      .channel(`room:${roomId}`)
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'messages',
+        filter: `room_id=eq.${roomId}` 
+      }, (payload) => {
+        setMessages(prev => [...prev, payload.new as Message]);
+        // Refresh server data if needed
+        router.refresh();
+      })
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [roomId, supabase, router]);
+
+  // Message sending function
+  const sendMessage = async (text: string) => {
+    if (!userId) return;
+    
+    await supabase.from('messages').insert({
+      room_id: roomId,
+      user_id: userId,
+      content: text,
+    });
+  };
+
+  return (
+    <div>
+      {/* UI implementation */}
+    </div>
+  );
+}
+```
+
+### Next.js Middleware for Auth Protection
+
+```tsx
+// middleware.ts
+import { createServerClient } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from 'next/server';
+import type { Database } from '@/types/supabase';
+
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
+
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  // IMPORTANT: Do not run code between createServerClient and
+  // supabase.auth.getUser(). This can make it hard to debug
+  // issues with users being randomly logged out.
+  
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Check auth condition
+  if (
+    !user &&
+    !request.nextUrl.pathname.startsWith('/login') &&
+    !request.nextUrl.pathname.startsWith('/auth')
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
+
+  // IMPORTANT: You must return the supabaseResponse object as is
+  return supabaseResponse;
+}
+
+export const config = {
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+};
+```
