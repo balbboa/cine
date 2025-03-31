@@ -23,12 +23,12 @@ import { useRouter } from 'next/navigation'
 import { 
   joinMatchmaking, 
   leaveMatchmaking, 
-  getPoolSize, 
+  getPoolSize,
   MatchmakingStatus, 
-  MatchType 
-} from "@/lib/matchmaking"
+  MatchType,
+  MatchmakingUser 
+} from "@/lib/matchmaking-supabase"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
-import { User as SupabaseUser } from '@supabase/supabase-js';
 
 type UserBadgeWithBadge = Database['public']['Tables']['user_badges']['Row'] & {
   badges: Badge | null
@@ -42,7 +42,7 @@ export default function GameHub() {
   const [activeTab, setActiveTab] = useState("play")
   const [currentGameMode, setCurrentGameMode] = useState<MatchType | null>(null)
   const [matchmakingStatus, setMatchmakingStatus] = useState<MatchmakingStatus>(MatchmakingStatus.IDLE)
-  const [matchmakingUserId, setMatchmakingUserId] = useState<string | null>(null)
+  const [, setMatchmakingUserId] = useState<string | null>(null)
   const [poolSize, setPoolSize] = useState(0)
   const [matchmakingError, setMatchmakingError] = useState<string | null>(null);
 
@@ -112,9 +112,9 @@ export default function GameHub() {
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;
     if (matchmakingStatus === MatchmakingStatus.SEARCHING && currentGameMode) {
-      const fetchPoolSize = () => {
+      const fetchPoolSize = async () => {
         try {
-            const size = getPoolSize(currentGameMode);
+            const size = await getPoolSize(currentGameMode);
             setPoolSize(size);
         } catch (err) {
             console.error("Error fetching pool size:", err);
@@ -122,7 +122,9 @@ export default function GameHub() {
         }
       };
       fetchPoolSize();
-      intervalId = setInterval(fetchPoolSize, 5000);
+      intervalId = setInterval(() => {
+        fetchPoolSize();
+      }, 5000);
     }
     return () => {
       if (intervalId) clearInterval(intervalId);
@@ -130,12 +132,10 @@ export default function GameHub() {
   }, [matchmakingStatus, currentGameMode]);
 
   const leaveQueueAndReset = useCallback(() => {
-    if (matchmakingUserId && currentGameMode) {
-      try {
-          leaveMatchmaking(currentGameMode, matchmakingUserId);
-      } catch (err) {
-          console.error("Error leaving matchmaking:", err);
-      }
+    try {
+      leaveMatchmaking();
+    } catch (err) {
+      console.error("Error leaving matchmaking:", err);
     }
     setMatchmakingStatus(MatchmakingStatus.IDLE);
     setMatchmakingUserId(null);
@@ -147,7 +147,7 @@ export default function GameHub() {
       console.log("[GameHub] Guest cancelled matchmaking, clearing guest session.");
       clearGuestSession();
     }
-  }, [matchmakingUserId, currentGameMode, isGuest, clearGuestSession]);
+  }, [isGuest, clearGuestSession]);
   
   // Add array of matchmaking phrases for immersive experience
   const quickMatchPhrases = useMemo(() => [
@@ -432,26 +432,34 @@ export default function GameHub() {
     console.log(`[GameHub] Starting matchmaking for user: ${matchmakingUser.id}, type: ${matchType}`);
 
     try {
-      // Create a minimal user object compatible with what joinMatchmaking likely needs
-      // const userForMatchmaking = { 
-      //   id: matchmakingUser.id, 
-      //   username: matchmakingUser.username 
-      //   // Add other fields like xp if needed by joinMatchmaking
-      // };
-
-      // Assuming joinMatchmaking expects an object with id and username
-      // You might need to adjust userForMatchmaking based on the actual signature of joinMatchmaking
-      // Use type assertion via unknown to bridge ContextUser and SupabaseUser
-      const mmUserId = await joinMatchmaking(matchType!, matchmakingUser as unknown as SupabaseUser | null, { 
+      // Use the new Supabase-based matchmaking service
+      const mmUserId = await joinMatchmaking(matchType, matchmakingUser as MatchmakingUser, { 
+        guestName: matchmakingUser.username,
+        rating: (matchmakingUser as MatchmakingUser).rating || 1000,
         onMatchFound: (gameId) => {
           console.log(`Match found! Game ID: ${gameId}`);
           setMatchmakingStatus(MatchmakingStatus.FOUND);
           // Redirect to the game page
           router.push(`/game/${gameId}`);
         },
+        onStatusUpdate: (status, data) => {
+          console.log(`Matchmaking status update: ${status}`, data);
+          setMatchmakingStatus(status);
+          
+          if (status === MatchmakingStatus.ERROR) {
+            setMatchmakingError(typeof data === 'object' && data && 'message' in data
+              ? String(data.message)
+              : 'An error occurred during matchmaking.');
+          } else if (status === MatchmakingStatus.TIMEOUT) {
+            setMatchmakingError('Matchmaking timed out. Please try again.');
+          }
+        }
       });
-      // mmUserId contains the Supabase user ID used in matchmaking (real or guest)
+      
+      // Store the user ID used in matchmaking
       console.log("Joined matchmaking queue with ID:", mmUserId);
+      setMatchmakingUserId(mmUserId);
+      setCurrentGameMode(matchType);
     } catch (error) {
       console.error("Failed to join matchmaking queue:", error);
       setMatchmakingError(error instanceof Error ? error.message : "An unexpected error occurred");
