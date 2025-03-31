@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { createClient } from '@/lib/db'
+import { createClient } from '@/lib/supabase/client'
 
 const supabase = createClient()
 

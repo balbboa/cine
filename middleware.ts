@@ -2,6 +2,20 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { Database } from '@/types/database.types'
 
+// Define the cookie interface to match what Supabase expects
+interface CookieOption {
+  name: string;
+  value: string;
+  options?: {
+    path?: string;
+    maxAge?: number;
+    domain?: string;
+    secure?: boolean;
+    httpOnly?: boolean;
+    sameSite?: 'strict' | 'lax' | 'none';
+  };
+}
+
 export async function middleware(request: NextRequest) {
   // For debugging
   console.log('Middleware running on:', request.nextUrl.pathname)
@@ -15,10 +29,11 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
+        // @ts-expect-error - Supabase expects this pattern
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: CookieOption[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
