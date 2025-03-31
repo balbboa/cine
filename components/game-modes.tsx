@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from "framer-motion"
 import { Zap, Trophy, Ticket, ChevronDown, ChevronUp } from "lucide-react"
@@ -53,15 +53,28 @@ export default function GameModes({
     rankedMatch: null,
   })
   const [showInviteInput, setShowInviteInput] = useState(false);
+  const [lastErrorMode, setLastErrorMode] = useState<'quick' | 'ranked' | null>(null);
+
+  // When an error from parent component is received, assign it to the correct match type
+  useEffect(() => {
+    if (error) {
+      setErrors(prev => ({
+        ...prev,
+        quickMatch: lastErrorMode === 'quick' ? error : prev.quickMatch,
+        rankedMatch: lastErrorMode === 'ranked' ? error : prev.rankedMatch,
+      }));
+    }
+  }, [error, lastErrorMode]);
 
   const combinedErrors = {
     quickMatch: errors.quickMatch,
-    rankedMatch: errors.rankedMatch || error
+    rankedMatch: errors.rankedMatch
   };
 
   const handleQuickMatch = async () => {
     setLoading(prev => ({ ...prev, quick: true }))
     setErrors(prev => ({ ...prev, quickMatch: null }))
+    setLastErrorMode('quick');
     try {
       await onStartGame('quick');
     } catch (error: unknown) {
@@ -77,6 +90,7 @@ export default function GameModes({
   const handleRankedMatch = async () => {
     setLoading(prev => ({ ...prev, ranked: true }))
     setErrors(prev => ({ ...prev, rankedMatch: null }))
+    setLastErrorMode('ranked');
     try {
       if (!user || isGuest) {
         const msg = "Please sign in to play Ranked mode.";

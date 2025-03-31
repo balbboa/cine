@@ -30,6 +30,7 @@ interface MatchmakingCallbacks {
 interface MatchmakingOptions extends MatchmakingCallbacks {
   guestName?: string;
   rating?: number;
+  isGuest?: boolean;
 }
 
 /**
@@ -67,8 +68,8 @@ export class SupabaseMatchmaking {
       onStatusUpdate: options.onStatusUpdate
     };
     
-    // Get user details
-    const isGuest = !user;
+    // Get user details - Use explicit isGuest from options if provided
+    const isGuest = options.isGuest !== undefined ? options.isGuest : !user;
     
     // Use type guard to check for username property
     const username = isMatchmakingUser(user) 

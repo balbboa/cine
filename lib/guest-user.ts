@@ -18,6 +18,7 @@ export interface GuestUser {
 // Key for local storage
 const GUEST_USER_KEY = 'cine-tac-toe-guest-user';
 const GUEST_USER_DATA_KEY = 'cine-tac-toe-guest-user-data';
+const GUEST_COOKIE_NAME = 'guest-user-token';
 
 // Generate a random username
 export function generateRandomUsername(): string {
@@ -53,6 +54,25 @@ function generateUUID(): string {
   }
 }
 
+// Set guest cookie for middleware
+function setGuestCookie(id: string): void {
+  if (typeof document === 'undefined') return;
+  
+  // Set cookie with 7-day expiry
+  const expiryDate = new Date();
+  expiryDate.setDate(expiryDate.getDate() + 7);
+  
+  document.cookie = `${GUEST_COOKIE_NAME}=${id}; expires=${expiryDate.toUTCString()}; path=/; SameSite=Lax`;
+}
+
+// Clear guest cookie
+function clearGuestCookie(): void {
+  if (typeof document === 'undefined') return;
+  
+  // Set cookie with expired date to remove it
+  document.cookie = `${GUEST_COOKIE_NAME}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax`;
+}
+
 // Local storage function to create a guest user
 // Renamed from createLocalGuestUser as it's the only creation method now
 function createLocalGuestUser(username?: string): GuestUser {
@@ -74,6 +94,8 @@ function createLocalGuestUser(username?: string): GuestUser {
     try {
       localStorage.setItem(GUEST_USER_KEY, id);
       localStorage.setItem(GUEST_USER_DATA_KEY, JSON.stringify(guestUser));
+      // Set cookie for middleware authentication
+      setGuestCookie(id);
       console.log('Created local guest user:', guestUsername, id);
     } catch (error) {
       console.error("Error saving guest user to localStorage:", error);
@@ -197,6 +219,8 @@ export function clearGuestUser(): void {
     try {
       localStorage.removeItem(GUEST_USER_KEY);
       localStorage.removeItem(GUEST_USER_DATA_KEY);
+      // Also clear the cookie
+      clearGuestCookie();
       console.log("Guest user data cleared from localStorage.");
     } catch (error) {
       console.error("Error clearing guest user data from localStorage:", error);

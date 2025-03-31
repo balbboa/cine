@@ -387,7 +387,7 @@ export default function GameHub() {
               animate={{ opacity: [0.8, 1, 0.8] }}
               transition={{ duration: 3, repeat: Infinity }}
             >
-              Matchmaking Error
+              {currentGameMode === MatchType.RANKED ? 'Ranked' : 'Quick'} Match Error
             </motion.h2>
             
             <motion.div
@@ -418,11 +418,13 @@ export default function GameHub() {
     setMatchmakingStatus(MatchmakingStatus.SEARCHING);
     
     let matchmakingUser = user;
+    let actualIsGuest = isGuest;
 
     // If no logged-in user and not already a guest, create a guest user first
     if (!matchmakingUser && !isGuest) {
       console.log('[GameHub] No user, creating guest for Quick Match...');
       matchmakingUser = autoCreateGuestUser(); // Call guest creation
+      actualIsGuest = true; // Since we're creating a guest user
       if (!matchmakingUser) {
         console.error('[GameHub] Failed to create guest user for matchmaking.');
         setMatchmakingError('Could not start game as guest. Please try logging in.');
@@ -440,13 +442,14 @@ export default function GameHub() {
       return;
     }
     
-    console.log(`[GameHub] Starting matchmaking for user: ${matchmakingUser.id}, type: ${matchType}`);
+    console.log(`[GameHub] Starting matchmaking for user: ${matchmakingUser.id}, type: ${matchType}, isGuest: ${actualIsGuest}`);
 
     try {
       // Use the new Supabase-based matchmaking service
       const mmUserId = await joinMatchmaking(matchType, matchmakingUser as MatchmakingUser, { 
         guestName: matchmakingUser.username,
         rating: (matchmakingUser as MatchmakingUser).rating || 1000,
+        isGuest: actualIsGuest, // Explicitly pass isGuest flag to the matchmaking service
         onMatchFound: (gameId) => {
           console.log(`Match found! Game ID: ${gameId}`);
           setMatchmakingStatus(MatchmakingStatus.FOUND);
@@ -474,7 +477,8 @@ export default function GameHub() {
     } catch (error) {
       console.error("Failed to join matchmaking queue:", error);
       setMatchmakingError(error instanceof Error ? error.message : "An unexpected error occurred");
-      setMatchmakingStatus(MatchmakingStatus.IDLE);
+      setMatchmakingStatus(MatchmakingStatus.ERROR);
+      throw error; // Re-throw so that GameModes can handle it
     }
   };
 

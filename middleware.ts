@@ -57,16 +57,23 @@ export async function middleware(request: NextRequest) {
   // Log authentication state
   console.log('Auth state:', user ? 'Authenticated' : 'Not authenticated', 'on path:', request.nextUrl.pathname)
 
+  // Check for guest access token in cookies
+  // This is a workaround since we can't access localStorage in middleware
+  const hasGuestCookie = request.cookies.has('guest-user-token')
+  
   // List of paths that require authentication
-  const protectedRoutes = ['/game-hub', '/game/', '/profile', '/social']
+  const protectedRoutes = ['/game-hub', '/profile', '/social']
+  // Game paths need special handling because they can be accessed by guest users
+  const isGamePath = request.nextUrl.pathname.startsWith('/game/')
   const isProtectedRoute = protectedRoutes.some(path => 
     request.nextUrl.pathname.startsWith(path)
   )
 
   // Redirect to login if user is not authenticated and trying to access a protected route
+  // BUT allow game paths if there's a guest cookie
   if (
     !user &&
-    isProtectedRoute &&
+    (isProtectedRoute || (isGamePath && !hasGuestCookie)) &&
     !request.nextUrl.pathname.startsWith('/login') &&
     !request.nextUrl.pathname.startsWith('/register') &&
     !request.nextUrl.pathname.startsWith('/auth') &&

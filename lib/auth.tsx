@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useState, useContext, useEffect } from 'react'
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Session } from '@supabase/supabase-js'
 import { User } from './db'
@@ -107,6 +107,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('[setUserData] Finished for user:', session.user.id); // Log end
   }, [supabase]); // Add supabase dependency
 
+  // Add a function to sync guest cookie with localStorage 
+  const syncGuestCookie = useCallback(() => {
+    if (isGuest && user?.id) {
+      // Ensure cookie exists for middleware
+      document.cookie = `guest-user-token=${user.id}; path=/; max-age=604800; SameSite=Lax`;
+    }
+  }, [isGuest, user]);
+
   // Initialize auth state
   useEffect(() => {
     console.log('Auth state change listener initialized')
@@ -130,6 +138,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log('Guest user found:', guestUser.username)
             setUser({ ...guestUser, isGuest: true })
             setIsGuest(true)
+            
+            // Sync cookie for middleware
+            document.cookie = `guest-user-token=${guestUser.id}; path=/; max-age=604800; SameSite=Lax`;
           } else {
             console.log('No guest user found either')
             setUser(null)
@@ -166,6 +177,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (guestUser) {
             setUser({ ...guestUser, isGuest: true })
             setIsGuest(true)
+            
+            // Sync cookie for middleware
+            document.cookie = `guest-user-token=${guestUser.id}; path=/; max-age=604800; SameSite=Lax`;
           }
         }
         
@@ -179,6 +193,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Add dependencies identified by linter
   }, [supabase, clearLocalStorageGuestUser, getGuestUser, setUserData]) // setUserData is now stable
   
+  // Add this effect to ensure guest cookie is always in sync
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      syncGuestCookie();
+      
+      // Use navigation events instead of router events
+      const handleRouteChange = () => {
+        if (isGuest && user?.id) {
+          syncGuestCookie();
+        }
+      };
+      
+      // Listen for history changes
+      window.addEventListener('popstate', handleRouteChange);
+      
+      return () => {
+        window.removeEventListener('popstate', handleRouteChange);
+      };
+    }
+  }, [isGuest, user, syncGuestCookie]);
+
   // Effect to handle redirection after login/signup
   useEffect(() => {
     // Check if user exists and we are on a login/register page
