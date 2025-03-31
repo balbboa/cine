@@ -13,8 +13,8 @@ import TicTacToeGame from '@/components/tic-tac-toe-game' // Import TicTacToeGam
 
 // Define GameWithDisplayNames locally
 interface GameWithDisplayNames extends Game {
-  player1_display_name?: string | null;
-  player2_display_name?: string | null;
+  player1_display_name: string | null;
+  player2_display_name: string | null;
 }
 
 type GamePageProps = {
