@@ -3,6 +3,20 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '@/types/database.types';
 
+// Cookie option interface
+interface CookieOption {
+  name: string;
+  value: string;
+  options?: {
+    path?: string;
+    maxAge?: number;
+    domain?: string;
+    secure?: boolean;
+    httpOnly?: boolean;
+    sameSite?: 'strict' | 'lax' | 'none';
+  };
+}
+
 // Server-side client for use in Server Components, Route Handlers, Server Actions
 export async function createClient() {
   const cookieStore = cookies();
@@ -12,23 +26,17 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        // @ts-expect-error - Supabase expects this pattern but TS doesn't recognize it
+        getAll() {
+          return cookieStore.getAll();
         },
-        set(name: string, value: string, options: { path: string; maxAge?: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: 'strict' | 'lax' | 'none' }) {
+        setAll(cookiesToSet: CookieOption[]) {
           try {
-            cookieStore.set(name, value, options);
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
           } catch {
-            // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-        remove(name: string, options: { path: string }) {
-          try {
-            cookieStore.set(name, '', { ...options, maxAge: 0 });
-          } catch {
-            // The `remove` method was called from a Server Component.
+            // The `setAll` method was called from a Server Component.
             // This can be ignored if you have middleware refreshing
             // user sessions.
           }

@@ -29,7 +29,7 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        // @ts-expect-error - Supabase expects this pattern
+        // @ts-expect-error - Supabase expects this pattern but TS doesn't recognize it
         getAll() {
           return request.cookies.getAll()
         },

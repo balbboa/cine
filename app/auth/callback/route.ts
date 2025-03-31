@@ -4,6 +4,20 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import type { Database } from '@/types/database.types'
 
+// Define the cookie interface to match what Supabase expects
+interface CookieOption {
+  name: string;
+  value: string;
+  options?: {
+    path?: string;
+    maxAge?: number;
+    domain?: string;
+    secure?: boolean;
+    httpOnly?: boolean;
+    sameSite?: 'strict' | 'lax' | 'none';
+  };
+}
+
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
@@ -18,7 +32,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${requestUrl.origin}/login?error=configuration_error`)
   }
 
-  // Initialize response
+  // Initialize response - not storing in variable since we're not using it
   NextResponse.next({
     request,
   })
@@ -29,13 +43,11 @@ export async function GET(request: NextRequest) {
       supabaseAnonKey,
       {
         cookies: {
-          // @ts-expect-error - Supabase expects this pattern
+          // @ts-expect-error - Supabase expects this pattern but TS doesn't recognize it
           getAll() {
             return cookieStore.getAll()
           },
-          // @ts-expect-error - Supabase expects this pattern
-          setAll(cookiesToSet) {
-            // @ts-expect-error - Destructuring of any type
+          setAll(cookiesToSet: CookieOption[]) {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options)
             })
