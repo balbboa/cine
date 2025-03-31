@@ -42,7 +42,7 @@ export default function GameHub() {
   const [activeTab, setActiveTab] = useState("play")
   const [currentGameMode, setCurrentGameMode] = useState<MatchType | null>(null)
   const [matchmakingStatus, setMatchmakingStatus] = useState<MatchmakingStatus>(MatchmakingStatus.IDLE)
-  const [, setMatchmakingUserId] = useState<string | null>(null)
+  const [matchmakingUserId, setMatchmakingUserId] = useState<string | null>(null)
   const [poolSize, setPoolSize] = useState(0)
   const [matchmakingError, setMatchmakingError] = useState<string | null>(null);
 
@@ -304,6 +304,17 @@ export default function GameHub() {
               <Timer className="h-4 w-4 text-primary/70 dark:text-blue-300" />
               <p className="text-foreground dark:text-white">Players in queue: <span className="font-semibold text-primary dark:text-blue-300">{poolSize}</span></p>
             </motion.div>
+            
+            {matchmakingUserId && (
+              <motion.div
+                className="mb-6 text-xs text-muted-foreground bg-muted/50 dark:bg-gray-800/50 px-3 py-1 rounded-md"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1 }}
+              >
+                Session ID: {matchmakingUserId.substring(0, 8)}...
+              </motion.div>
+            )}
             
             <Button 
               variant="destructive" 
