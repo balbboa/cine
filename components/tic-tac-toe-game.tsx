@@ -9,8 +9,8 @@ import type { ContextUser } from '@/lib/auth'; // Import the user type from auth
 
 // Define GameWithDisplayNames locally to handle potentially missing fields
 interface GameWithDisplayNames extends Game {
-  player1_display_name?: string | null;
-  player2_display_name?: string | null;
+  player1_display_name: string | null;
+  player2_display_name: string | null;
 }
 
 interface TicTacToeGameProps {
