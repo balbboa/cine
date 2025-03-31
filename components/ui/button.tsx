@@ -18,6 +18,21 @@ const sizeStyles = {
   icon: "h-10 w-10",
 };
 
+// Add a buttonVariants function that can be exported
+const buttonVariants = ({
+  variant = "default",
+  size = "default",
+}: {
+  variant?: keyof typeof variantStyles;
+  size?: keyof typeof sizeStyles;
+} = {}): string => {
+  return cn(
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50",
+    variantStyles[variant],
+    sizeStyles[size]
+  );
+};
+
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: keyof typeof variantStyles;
   size?: keyof typeof sizeStyles;
@@ -42,4 +57,4 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 )
 Button.displayName = "Button"
 
-export { Button }
+export { Button, buttonVariants }
