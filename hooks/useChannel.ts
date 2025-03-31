@@ -1,105 +1,97 @@
 import { useState, useEffect, useRef } from 'react';
-import { RealtimeChannel, RealtimeChannelSendResponse } from '@supabase/supabase-js';
-import { supabase } from '../lib/db';
+import { RealtimeChannelSendResponse } from '@supabase/supabase-js';
+import { createClient } from '../lib/supabase/client';
 
 type EventCallback = (payload: any) => void;
 
-interface EventSubscription {
-  event: string;
-  originalCallback: EventCallback;
-  wrappedCallback: EventCallback;
-  active: boolean;
-}
-
+// Interface for our wrapper channel
 interface ChannelInterface {
   on: (event: string, callback: EventCallback) => ChannelInterface;
   off: (event: string) => ChannelInterface;
   push: (event: string, payload: any) => Promise<RealtimeChannelSendResponse>;
 }
 
+// Return type for the hook
 interface UseChannelReturn {
   channel: ChannelInterface | null;
   error: Error | null;
 }
 
+// Helper to track subscriptions
+interface EventSubscription {
+  event: string;
+  callback: EventCallback;
+  active: boolean;
+}
+
 export function useChannel(channelName: string): UseChannelReturn {
-  const [channel, setChannel] = useState<RealtimeChannel | null>(null);
-  const [channelInterface, setChannelInterface] = useState<ChannelInterface | null>(null);
+  const [wrapper, setWrapper] = useState<ChannelInterface | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const subscriptionsRef = useRef<EventSubscription[]>([]);
 
   useEffect(() => {
+    // Create a new Supabase client instance
+    const supabase = createClient();
+    
     try {
-      // Create a Supabase Realtime channel
-      const supabaseChannel = supabase.channel(channelName);
-
-      // Create a wrapper interface around the Supabase channel that has the expected methods
-      const wrapper: ChannelInterface = {
+      // Create and subscribe to the channel right away
+      const channel = supabase.channel(channelName);
+      
+      // Subscribe - this is a no argument function in Supabase v2
+      channel.subscribe();
+      
+      // Create our wrapper with a simplified interface
+      const channelWrapper: ChannelInterface = {
         on: (event: string, callback: EventCallback) => {
-          // Create a wrapped callback that checks if the subscription is active
-          const wrappedCallback: EventCallback = (payload: any) => {
-            // Find the subscription in our registry
-            const subscription = subscriptionsRef.current.find(
-              sub => sub.event === event && sub.originalCallback === callback
-            );
-            
-            // Only execute callback if the subscription is active
-            if (subscription && subscription.active) {
-              callback(payload);
-            }
-          };
-          
-          // Register the subscription in our local registry
+          // Register the callback in our registry
           subscriptionsRef.current.push({
             event,
-            originalCallback: callback,
-            wrappedCallback,
+            callback,
             active: true
           });
           
-          // Register with Supabase using our wrapped callback
-          supabaseChannel.on(event, wrappedCallback);
-          return wrapper;
+          // Add the listener to the actual channel
+          // We ignore typing here since the Supabase types are complex
+          (channel as any).on(event, callback);
+          
+          return channelWrapper;
         },
+        
         off: (event: string) => {
-          // Mark all subscriptions for this event as inactive
-          subscriptionsRef.current.forEach(subscription => {
-            if (subscription.event === event) {
-              subscription.active = false;
+          // Mark matching subscriptions as inactive
+          subscriptionsRef.current.forEach(sub => {
+            if (sub.event === event) {
+              sub.active = false;
             }
           });
-          return wrapper;
+          
+          return channelWrapper;
         },
+        
         push: async (event: string, payload: any) => {
-          return supabaseChannel.send({
+          return channel.send({
             type: 'broadcast',
             event: event,
             payload: payload,
           });
-        },
-      };
-
-      // Subscribe to the channel
-      supabaseChannel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setChannel(supabaseChannel);
-          setChannelInterface(wrapper);
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-          setError(new Error(`Channel subscription failed with status: ${status}`));
         }
-      });
-
-      // Cleanup: Unsubscribe from the channel when component unmounts
+      };
+      
+      // Store the wrapper
+      setWrapper(channelWrapper);
+      
+      // Clean up on unmount
       return () => {
-        // Clear all subscriptions
         subscriptionsRef.current = [];
-        supabaseChannel.unsubscribe();
+        // Remove the channel from Supabase
+        supabase.removeChannel(channel);
       };
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('An unknown error occurred'));
+      setError(err instanceof Error ? err : new Error('Failed to create channel'));
+      return () => {}; // Empty cleanup if setup failed
     }
   }, [channelName]);
-
-  return { channel: channelInterface, error };
+  
+  return { channel: wrapper, error };
 }
 
