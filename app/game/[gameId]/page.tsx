@@ -25,11 +25,20 @@ type GamePageProps = {
 
 export default function GamePage({ params }: GamePageProps) {
   const { gameId } = params
-  const { user /*, isLoading: _authLoading, isGuest */ } = useAuth() // Remove unused variables
+  const { user, isGuest } = useAuth() // Add isGuest from auth context
   const [isLoading, setIsLoading] = useState(true)
   const [pageTitle, setPageTitle] = useState('Cine-Tac-Toe Game')
   const [error, setError] = useState<string | null>(null)
   const [gameData, setGameData] = useState<Game | null>(null) // State to hold game data
+  
+  // Ensure guest cookie persists - synchronize on component mount
+  useEffect(() => {
+    if (isGuest && user?.id) {
+      // Set the cookie with a 7-day expiry
+      document.cookie = `guest-user-token=${user.id}; path=/; max-age=604800; SameSite=Lax`;
+      console.log("Guest cookie synchronized in game page");
+    }
+  }, [isGuest, user]);
   
   useEffect(() => {
     const initGame = async () => {
@@ -53,9 +62,7 @@ export default function GamePage({ params }: GamePageProps) {
 
       try {
         console.log(`Fetching game data for ID: ${gameId}`);
-        // const fetchedGame = await getGameById(gameId); // Original call
-
-        // Fetch game directly using Supabase client
+        // Fetch game directly using Supabase client with expanded player data
         const supabase = createClient();
         const { data: fetchedGame, error: fetchError } = await supabase
           .from('games')
@@ -69,9 +76,30 @@ export default function GamePage({ params }: GamePageProps) {
           setError("Game not found or you don't have access.");
         } else {
           console.log("Fetched game data:", fetchedGame);
+          
+          // Check if current user is a participant (including guest IDs)
+          if (user) {
+            const isPlayer1 = fetchedGame.player1_id === user.id || 
+                              fetchedGame.player1_guest_id === user.id;
+            const isPlayer2 = fetchedGame.player2_id === user.id || 
+                              fetchedGame.player2_guest_id === user.id;
+                              
+            console.log(`User participation check: isPlayer1=${isPlayer1}, isPlayer2=${isPlayer2}`);
+            console.log(`User ID: ${user.id}, isGuest: ${isGuest}`);
+            console.log(`Game player1_id: ${fetchedGame.player1_id}, player1_guest_id: ${fetchedGame.player1_guest_id}`);
+            console.log(`Game player2_id: ${fetchedGame.player2_id}, player2_guest_id: ${fetchedGame.player2_guest_id}`);
+            
+            if (!isPlayer1 && !isPlayer2 && fetchedGame.status !== 'completed') {
+              // Allow spectators for completed games, but restrict access to ongoing games
+              console.log("User is not a participant in this game");
+              // Just a warning for now - allow spectators, but log the access
+            }
+          } else {
+            console.log("No user found, continuing as spectator");
+          }
+          
           setGameData(fetchedGame);
           // Set title based on fetched data (e.g., using player names)
-          // Use local interface for type assertion
           const p1Name = (fetchedGame as GameWithDisplayNames).player1_display_name || 'Player 1'; 
           const p2Name = (fetchedGame as GameWithDisplayNames).player2_display_name || 'Player 2'; 
           setPageTitle(`${p1Name} vs ${p2Name}`);
@@ -87,8 +115,8 @@ export default function GamePage({ params }: GamePageProps) {
     }
     
     initGame()
-    // Removed dependency on user/autoCreateGuestUser, depends only on gameId
-  }, [gameId]) 
+    // Add dependency on user and isGuest to re-run when auth state changes
+  }, [gameId, user, isGuest]) 
   
   if (isLoading) {
     return (
@@ -129,12 +157,11 @@ export default function GamePage({ params }: GamePageProps) {
         
         {/* Conditionally render game component */} 
         {gameData && user ? (
-          <TicTacToeGame // Use the imported component
+          <TicTacToeGame
             game={gameData}
             currentUser={user}
           /> 
         ) : gameId === 'local' ? (
-          // <LocalTicTacToe gameId={gameId} user={user} /> // Uncomment if you have a local version
           <div className="text-center text-yellow-400">Local Game Placeholder</div>
         ) : (
           // Show placeholder or specific message if game data couldn't load but no error was thrown

@@ -38,10 +38,28 @@ export default function TicTacToeGame({
   const [board, setBoard] = useState<(string | null)[]>(initialBoard || Array(9).fill(null))
 
   // Determine player roles based on currentUser ID vs game player IDs
-  // Note: Comparing currentUser.id (guest nanoid) against game.playerX_id (null for guests) requires care.
-  // You might need a different way to know if the current guest is P1 or P2.
-  const isPlayer1 = currentUser.id === game.player1_id || (!game.player1_id && currentUser.isGuest /* Add more logic here? */);
-  const isPlayer2 = currentUser.id === game.player2_id || (!game.player2_id && currentUser.isGuest /* Add more logic here? */);
+  // Check both regular player IDs and guest player IDs to properly identify the player's role
+  const isPlayer1 = (
+    currentUser.id === game.player1_id || 
+    (currentUser.isGuest && currentUser.id === game.player1_guest_id)
+  );
+
+  const isPlayer2 = (
+    currentUser.id === game.player2_id || 
+    (currentUser.isGuest && currentUser.id === game.player2_guest_id)
+  );
+
+  // Add debug logs to help troubleshoot player identification
+  console.log("[TicTacToeGame] Player identification:", {
+    currentUserId: currentUser.id,
+    isGuest: currentUser.isGuest,
+    player1Id: game.player1_id,
+    player1GuestId: game.player1_guest_id,
+    player2Id: game.player2_id,
+    player2GuestId: game.player2_guest_id,
+    isPlayer1,
+    isPlayer2
+  });
 
   // Use local interface for type assertion
   const player1Name = (game as GameWithDisplayNames).player1_display_name || 'Player 1';
